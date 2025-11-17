@@ -22,7 +22,8 @@ struct DiscoveredPreviewAndIndex {
 }
 
 var previews: [DiscoveredPreviewAndIndex] = []
-private var previewsBySelector: [String: DiscoveredPreviewAndIndex] = [:]
+// Map per class to avoid cross-subclass clashes when invocations are created for multiple subclasses
+private var previewsByClassAndSelector: [String: DiscoveredPreviewAndIndex] = [:]
 
 @objc(EMGPreviewBaseTest)
 open class PreviewBaseTest: XCTestCase {
@@ -71,7 +72,7 @@ open class PreviewBaseTest: XCTestCase {
         var dynamicTestSelectors: [String] = []
         let discoveredPreviews = discoverPreviews()
         previews = []
-        previewsBySelector = [:]
+        let className = NSStringFromClass(self)
         var i = 0
         
         let currentDeviceName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"]
@@ -95,7 +96,7 @@ open class PreviewBaseTest: XCTestCase {
                 
                 let preview = DiscoveredPreviewAndIndex(preview: discoveredPreview, index: j)
                 previews.append(preview)
-                previewsBySelector[testSelectorName] = preview
+                previewsByClassAndSelector["\(className)|\(testSelectorName)"] = preview
                 
                 let sel = NSSelectorFromString(testSelectorName)
                 let rawPtr = unsafeBitCast(dynamicTestMethod, to: UnsafeRawPointer.self)
@@ -125,21 +126,11 @@ open class PreviewBaseTest: XCTestCase {
 @MainActor
 private let dynamicTestMethod: @convention(c) (AnyObject, Selector) -> Void = { (self, _cmd) in
     let selectorName = NSStringFromSelector(_cmd)
+    let className = NSStringFromClass(type(of: (self as AnyObject)))
     
-    // Prefer exact mapping; fall back to parsed index only if present and in-bounds
-    let resolvedPreview: DiscoveredPreviewAndIndex? = {
-        if let p = previewsBySelector[selectorName] { return p }
-        if let last = selectorName.split(separator: "-").last,
-           let idx = Int(last),
-           previews.indices.contains(idx) {
-            return previews[idx]
-        }
-        return nil
-    }()
-    
-    guard let preview = resolvedPreview else {
+    guard let preview = previewsByClassAndSelector["\(className)|\(selectorName)"] else {
         if let testCase = self as? PreviewBaseTest {
-            XCTFail("No preview registered for selector \(selectorName)")
+            XCTFail("No preview registered for selector \(selectorName) in \(className)")
         }
         return
     }
