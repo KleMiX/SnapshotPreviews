@@ -55,7 +55,7 @@ open class PreviewBaseTest: XCTestCase {
             return []
         }
         
-        let dynamicTestSelectors = addMethods().sorted()
+        let dynamicTestSelectors = addMethods()
         var invocations: [AnyObject] = []
         guard let signatureCreator else {
             return invocations
@@ -127,6 +127,10 @@ open class PreviewBaseTest: XCTestCase {
 private let dynamicTestMethod: @convention(c) (AnyObject, Selector) -> Void = { (self, _cmd) in
     let selectorName = NSStringFromSelector(_cmd)
     let className = NSStringFromClass(type(of: (self as AnyObject)))
+    
+#if DEBUG
+    print("SnapshotPreviews dynamic invoke:", className, selectorName, "registered:", previewsByClassAndSelector["\(className)|\(selectorName)"] != nil)
+#endif
     
     guard let preview = previewsByClassAndSelector["\(className)|\(selectorName)"] else {
         if let testCase = self as? PreviewBaseTest {
